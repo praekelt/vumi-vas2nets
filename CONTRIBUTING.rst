@@ -1,14 +1,14 @@
-How to contribute to Vumi AAT
-=============================
+How to contribute to Vumi Vas2Nets
+==================================
 
-Vumi AAT is an Open Source software project under the BSD license.
+Vumi Vas2Nets is an Open Source software project under the BSD license.
 We love contributions!
 
 Here's a quick guide on how to contribute to the project:
 
 1.  Fork the repository
 2.  Run the tests, we'll only accept pull requests with passing tests.
-    Ensure that the tests run with ``trial vxaat`` and that you're starting
+    Ensure that the tests run with ``trial vxvas2nets`` and that you're starting
     with a clean slate.
 3.  Make your changes to your forked repository and ensure that tests are
     added where necessary.
