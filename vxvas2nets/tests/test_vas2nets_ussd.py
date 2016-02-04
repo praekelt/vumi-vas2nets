@@ -265,3 +265,156 @@ class TestVas2NetsUssdTransport(VumiTestCase):
         self.assert_nack(
             nack, reply, 'Could not find original request.')
 
+    @inlineCallbacks
+    def test_status_quick_response(self):
+        '''Ok status event should be sent if the response is quick.'''
+        d = self.tx_helper.mk_request(
+            userdata='test', endofsession=False, msisdn='+123', sessionid='4')
+        [msg] = yield self.tx_helper.wait_for_dispatched_inbound(1)
+        yield self.tx_helper.clear_dispatched_statuses()
+
+        self.tx_helper.dispatch_outbound(msg.reply('foo'))
+        yield d
+
+        [status] = yield self.tx_helper.get_dispatched_statuses()
+        self.assertEqual(status['status'], 'ok')
+        self.assertEqual(status['component'], 'response')
+        self.assertEqual(status['message'], 'Response sent')
+        self.assertEqual(status['type'], 'response_sent')
+
+    @inlineCallbacks
+    def test_status_degraded_slow_response(self):
+        '''A degraded status event should be sent if the response took longer
+        than 1 second.'''
+        d = self.tx_helper.mk_request(
+            userdata='test', endofsession=False, msisdn='+123', sessionid='4')
+        [msg] = yield self.tx_helper.wait_for_dispatched_inbound(1)
+        yield self.tx_helper.clear_dispatched_statuses()
+
+        self.clock.advance(self.transport.response_time_degraded + 0.1)
+
+        self.tx_helper.dispatch_outbound(msg.reply('foo'))
+        yield d
+
+        [status] = yield self.tx_helper.get_dispatched_statuses()
+        self.assertEqual(status['status'], 'degraded')
+        self.assertTrue(
+            str(self.transport.response_time_degraded) in status['reasons'][0])
+        self.assertEqual(status['component'], 'response')
+        self.assertEqual(status['type'], 'slow_response')
+        self.assertEqual(status['message'], 'Slow response')
+
+    @inlineCallbacks
+    def test_status_down_very_slow_response(self):
+        '''A down status event should be sent if the response took longer
+        than 10 seconds.'''
+        d = self.tx_helper.mk_request(
+            userdata='test', endofsession=False, msisdn='+123', sessionid='4')
+        [msg] = yield self.tx_helper.wait_for_dispatched_inbound(1)
+        yield self.tx_helper.clear_dispatched_statuses()
+
+        self.clock.advance(self.transport.response_time_down + 0.1)
+
+        self.tx_helper.dispatch_outbound(msg.reply('foo'))
+        yield d
+
+        [status] = yield self.tx_helper.get_dispatched_statuses()
+        self.assertEqual(status['status'], 'down')
+        self.assertTrue(
+            str(self.transport.response_time_down) in status['reasons'][0])
+        self.assertEqual(status['component'], 'response')
+        self.assertEqual(status['type'], 'very_slow_response')
+        self.assertEqual(status['message'], 'Very slow response')
+
+    @inlineCallbacks
+    def test_no_response_status_for_message_not_found(self):
+        '''If we cannot find the starting timestamp for a message, no status
+        message should be sent'''
+        reply = self.tx_helper.make_outbound(
+            'There are some who call me ... Tim!', message_id='23',
+            in_reply_to='some-number')
+        self.tx_helper.dispatch_outbound(reply)
+        statuses = yield self.tx_helper.get_dispatched_statuses()
+        self.assertEqual(len(statuses), 0)
+
+    @inlineCallbacks
+    def test_no_good_status_event_for_bad_responses(self):
+        '''If the http response is not a good (200-399) response, then a
+        status event shouldn't be sent, because we send different status
+        events for those errors.'''
+        d = self.tx_helper.mk_request(
+            userdata='test', endofsession=False, msisdn='+123', sessionid='4')
+
+        [msg] = yield self.tx_helper.wait_for_dispatched_inbound(1)
+        yield self.tx_helper.clear_dispatched_statuses()
+
+        self.transport.finish_request(msg['message_id'], '', code=500)
+
+        yield d
+
+        statuses = yield self.tx_helper.get_dispatched_statuses()
+        self.assertEqual(len(statuses), 0)
+
+    @inlineCallbacks
+    def test_no_degraded_status_event_for_bad_responses(self):
+        '''If the http response is not a good (200-399) response, then a
+        status event shouldn't be sent, because we send different status
+        events for those errors.'''
+        d = self.tx_helper.mk_request(
+            userdata='test', endofsession=False, msisdn='+123', sessionid='4')
+
+        [msg] = yield self.tx_helper.wait_for_dispatched_inbound(1)
+        yield self.tx_helper.clear_dispatched_statuses()
+
+        self.clock.advance(self.transport.response_time_degraded + 0.1)
+
+        self.transport.finish_request(msg['message_id'], '', code=500)
+
+        yield d
+
+        statuses = yield self.tx_helper.get_dispatched_statuses()
+        self.assertEqual(len(statuses), 0)
+
+    @inlineCallbacks
+    def test_no_down_status_event_for_bad_responses(self):
+        '''If the http response is not a good (200-399) response, then a
+        status event shouldn't be sent, because we send different status
+        events for those errors.'''
+        d = self.tx_helper.mk_request(
+            userdata='test', endofsession=False, msisdn='+123', sessionid='4')
+
+        [msg] = yield self.tx_helper.wait_for_dispatched_inbound(1)
+        yield self.tx_helper.clear_dispatched_statuses()
+
+        self.clock.advance(self.transport.response_time_down + 0.1)
+
+        self.transport.finish_request(msg['message_id'], '', code=500)
+
+        yield d
+
+        statuses = yield self.tx_helper.get_dispatched_statuses()
+        self.assertEqual(len(statuses), 0)
+
+    @inlineCallbacks
+    def test_status_down_timeout(self):
+        '''A down status event should be sent if the response timed out'''
+        d = self.tx_helper.mk_request(
+            userdata='test', endofsession=False, msisdn='+123', sessionid='4')
+        [msg] = yield self.tx_helper.wait_for_dispatched_inbound(1)
+        yield self.tx_helper.clear_dispatched_statuses()
+
+        self.clock.advance(self.transport.request_timeout + 0.1)
+
+        self.tx_helper.dispatch_outbound(msg.reply('foo'))
+        yield d
+
+        [status] = yield self.tx_helper.get_dispatched_statuses()
+        self.assertEqual(status['status'], 'down')
+        self.assertTrue(
+            str(self.transport.request_timeout) in status['reasons'][0])
+        self.assertEqual(status['component'], 'response')
+        self.assertEqual(status['type'], 'timeout')
+        self.assertEqual(status['message'], 'Response timed out')
+        self.assertEqual(status['details'], {
+            'response_time': self.transport.request_timeout + 0.1,
+        })
