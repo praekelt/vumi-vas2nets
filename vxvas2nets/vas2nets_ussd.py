@@ -52,7 +52,7 @@ class Vas2NetsUssdTransport(HttpRpcTransport):
 
     @inlineCallbacks
     def session_event_for_transaction(self, session_id, endofsession):
-        if endofsession is True:
+        if endofsession == 'true':
             yield self.session_manager.clear_session(session_id)
             returnValue(TransportUserMessage.SESSION_CLOSE)
 
@@ -98,6 +98,13 @@ class Vas2NetsUssdTransport(HttpRpcTransport):
 
         session_event = yield self.session_event_for_transaction(
             values['sessionid'], values['endofsession'])
+
+        if session_event == TransportUserMessage.SESSION_CLOSE:
+            self.finish_request(message_id, json.dumps({
+                'userdata': '',
+                'endofsession': True,
+                'msisdn': values['msisdn'],
+            }))
 
         yield self.publish_message(
             message_id=message_id,

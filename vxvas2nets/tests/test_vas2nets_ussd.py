@@ -55,7 +55,30 @@ class TestVas2NetsUssdTransport(VumiTestCase):
             session_event=TransportUserMessage.SESSION_NEW,
             transport_metadata={'vas2nets_ussd': {'sessionid': '4'}})
         # Close the request to properly clean up the test
-        self.transport.finish_request(msg['message_id'], '')
+        self.transport.close_request(msg['message_id'])
+
+    @inlineCallbacks
+    def test_inbound_message_end_of_session(self):
+        '''If an inbound message comes in that signals the end of the session,
+        the session_event should be a SESSION_CLOSE, and the session should
+        be removed.'''
+        yield self.transport.session_manager.create_session('4', foo='bar')
+        response = yield self.tx_helper.mk_request(
+            userdata='test', endofsession='true', msisdn='+123', sessionid='4')
+        self.assertEqual(json.loads(response.delivered_body), {
+            'endofsession': True,
+            'userdata': '',
+            'msisdn': '+123',
+        })
+        [msg] = yield self.tx_helper.wait_for_dispatched_inbound(1)
+        self.assert_message(
+            msg, content='test', from_addr='+123', from_addr_type='msisdn',
+            provider='vas2nets',
+            session_event=TransportUserMessage.SESSION_CLOSE,
+            transport_metadata={'vas2nets_ussd': {'sessionid': '4'}})
+        self.assertEqual(self.transport.get_request(msg['message_id']), None)
+        session = yield self.transport.session_manager.load_session('4')
+        self.assertEqual(session, {})
 
     @inlineCallbacks
     def test_inbound_status(self):
