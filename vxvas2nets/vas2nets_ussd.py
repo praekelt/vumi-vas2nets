@@ -113,3 +113,22 @@ class Vas2NetsUssdTransport(HttpRpcTransport):
                     'sessionid': values['sessionid'],
                 }
             })
+
+    @inlineCallbacks
+    def handle_outbound_message(self, message):
+        self.emit("Vas2NetsUssdTransport consuming %r" % (message,))
+
+        missing_fields = self.ensure_message_values(
+            message, ['in_reply_to', 'content', 'to_addr'])
+        if missing_fields:
+            nack = yield self.reject_message(message, missing_fields)
+            returnValue(nack)
+
+        endofsession = (
+            message["session_event"] == TransportUserMessage.SESSION_CLOSE)
+
+        response_data = {
+            'userdata': message['content'],
+            'endofsession': endofsession,
+            'msisdn': message['to_addr'],
+        }

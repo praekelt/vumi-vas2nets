@@ -28,6 +28,16 @@ class TestVas2NetsUssdTransport(VumiTestCase):
         self.transport_url = self.transport.get_transport_url(
             self.config['web_path'])
 
+    def assert_ack(self, ack, reply):
+        self.assertEqual(ack.payload['event_type'], 'ack')
+        self.assertEqual(ack.payload['user_message_id'], reply['message_id'])
+        self.assertEqual(ack.payload['sent_message_id'], reply['message_id'])
+
+    def assert_nack(self, nack, reply, reason):
+        self.assertEqual(nack.payload['event_type'], 'nack')
+        self.assertEqual(nack.payload['user_message_id'], reply['message_id'])
+        self.assertEqual(nack.payload['nack_reason'], reason)
+
     def assert_message(self, msg, **field_values):
         for field, expected_value in field_values.iteritems():
             self.assertEqual(msg[field], expected_value)
@@ -61,7 +71,7 @@ class TestVas2NetsUssdTransport(VumiTestCase):
         self.assertEqual(status['message'], 'Request parsed')
 
         # Close the request to properly clean up the test
-        self.transport.finish_request(msg['message_id'], '')
+        self.transport.close_request(msg['message_id'])
 
     @inlineCallbacks
     def test_inbound_cannot_decode(self):
@@ -157,3 +167,78 @@ class TestVas2NetsUssdTransport(VumiTestCase):
         self.assertEqual(status['type'], 'invalid_inbound_fields')
         self.assertEqual(sorted(status['details']['unexpected_parameter']), [
             'unexpected_p1', 'unexpected_p2'])
+
+    @inlineCallbacks
+    def test_inbound_resume_and_reply_with_end(self):
+        '''When we reply to a resumed session with a message to close the
+        session, the endofsession field should be True.'''
+        yield self.transport.session_manager.create_session('4')
+
+        d = self.tx_helper.mk_request(
+            userdata='test', endofsession=False, msisdn='+123', sessionid='4')
+        [msg] = yield self.tx_helper.wait_for_dispatched_inbound(1)
+        self.assert_message(
+            msg, session_event=TransportUserMessage.SESSION_RESUME,
+            content='test')
+
+        reply = msg.reply('test reply', continue_session=False)
+        self.tx_helper.dispatch_outbound(reply)
+        response = yield d
+        self.assertEqual(json.loads(response.delivered_body), {
+            'endofsession': True,
+            'userdata': 'test reply',
+            'msisdn': '+123',
+        })
+        self.assertEqual(response.code, 200)
+
+        [ack] = yield self.tx_helper.wait_for_dispatched_events(1)
+        self.assert_ack(ack, reply)
+
+    @inlineCallbacks
+    def test_inbound_resume_and_reply_with_resume(self):
+        '''When we reply to a resumed session with a message to keep open the
+        session, the endofsession field should be False.'''
+        yield self.transport.session_manager.create_session('4')
+
+        d = self.tx_helper.mk_request(
+            userdata='test', endofsession=False, msisdn='+123', sessionid='4')
+        [msg] = yield self.tx_helper.wait_for_dispatched_inbound(1)
+        self.assert_message(
+            msg, session_event=TransportUserMessage.SESSION_RESUME,
+            content='test')
+
+        reply = msg.reply('test reply', continue_session=True)
+        self.tx_helper.dispatch_outbound(reply)
+        response = yield d
+        self.assertEqual(json.loads(response.delivered_body), {
+            'endofsession': False,
+            'userdata': 'test reply',
+            'msisdn': '+123',
+        })
+        self.assertEqual(response.code, 200)
+
+        [ack] = yield self.tx_helper.wait_for_dispatched_events(1)
+        self.assert_ack(ack, reply)
+
+    @inlineCallbacks
+    def test_nack_insufficient_message_fields(self):
+        '''When there are missong fields in a reply message, then we should
+        respond with an appropriate nack message.'''
+        reply = self.tx_helper.make_outbound(
+            None, message_id='23', in_reply_to=None)
+        self.tx_helper.dispatch_outbound(reply)
+        [nack] = yield self.tx_helper.wait_for_dispatched_events(1)
+        self.assert_nack(nack, reply, 'Missing fields: in_reply_to, content')
+
+    @inlineCallbacks
+    def test_nack_http_http_response_failure(self):
+        '''When we reply to a session that is no longer connected, then an
+        appropriate nack message should be sent.'''
+        reply = self.tx_helper.make_outbound(
+            'There are some who call me ... Tim!', message_id='23',
+            in_reply_to='some-number')
+        self.tx_helper.dispatch_outbound(reply)
+        [nack] = yield self.tx_helper.wait_for_dispatched_events(1)
+        self.assert_nack(
+            nack, reply, 'Could not find original request.')
+
