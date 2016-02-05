@@ -216,6 +216,8 @@ class TestVas2NetsUssdTransport(VumiTestCase):
 
         [ack] = yield self.tx_helper.wait_for_dispatched_events(1)
         self.assert_ack(ack, reply)
+        session = yield self.transport.session_manager.load_session('4')
+        self.assertEqual(session, {})
 
     @inlineCallbacks
     def test_inbound_resume_and_reply_with_resume(self):

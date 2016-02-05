@@ -133,6 +133,9 @@ class Vas2NetsUssdTransport(HttpRpcTransport):
 
         endofsession = (
             message["session_event"] == TransportUserMessage.SESSION_CLOSE)
+        if endofsession is True:
+            yield self.session_manager.clear_session(
+                message['transport_metadata']['vas2nets_ussd']['sessionid'])
 
         response_data = {
             'userdata': message['content'],
