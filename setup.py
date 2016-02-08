@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="vxvas2nets",
-    version="0.6.0",
+    version="0.6.1a",
     url='http://github.com/praekelt/vumi-vas2nets',
     license='BSD',
     description="A Vas2Nets USSD transport for Vumi.",
