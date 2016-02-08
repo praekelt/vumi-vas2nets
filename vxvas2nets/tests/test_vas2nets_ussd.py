@@ -247,7 +247,7 @@ class TestVas2NetsUssdTransport(VumiTestCase):
 
     @inlineCallbacks
     def test_nack_insufficient_message_fields(self):
-        '''When there are missong fields in a reply message, then we should
+        '''When there are missing fields in a reply message, then we should
         respond with an appropriate nack message.'''
         reply = self.tx_helper.make_outbound(
             None, message_id='23', in_reply_to=None)
