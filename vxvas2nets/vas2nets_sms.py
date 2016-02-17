@@ -75,7 +75,7 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
         yield self.publish_message(
             **self.get_message_dict(message_id, vals))
 
-        self.respond(message_id, http.BAD_REQUEST, {})
+        self.respond(message_id, http.OK, {})
 
     @inlineCallbacks
     def handle_raw_inbound_message(self, message_id, request):

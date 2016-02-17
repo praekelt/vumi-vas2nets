@@ -2,6 +2,7 @@
 
 import json
 from urllib import urlencode
+from twisted.web import http
 
 from twisted.internet.task import Clock
 from twisted.internet.defer import inlineCallbacks
@@ -50,13 +51,15 @@ class TestVas2NetsSmsTransport(VumiTestCase):
 
     @inlineCallbacks
     def test_inbound(self):
-        self.tx_helper.mk_request(
+        res = yield self.tx_helper.mk_request(
             sender='+123',
             receiver='456',
             msgdata='hi',
             operator='MTN',
             recvtime='2012-02-27 19-50-07',
             msgid='789')
+
+        self.assertEqual(res.code, http.OK)
 
         [msg] = yield self.tx_helper.wait_for_dispatched_inbound(1)
 
