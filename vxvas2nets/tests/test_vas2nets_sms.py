@@ -77,11 +77,6 @@ class TestVas2NetsSmsTransport(VumiTestCase):
             sorted(actual_params.split('&')),
             sorted(urlencode(params).split('&')))
 
-    def remote_respond(self, req, code, body):
-        req.setResponseCode(code)
-        req.write(body)
-        req.finish()
-
     @inlineCallbacks
     def test_inbound(self):
         res = yield self.tx_helper.mk_request(
