@@ -49,6 +49,15 @@ class TestVas2NetsSmsTransport(VumiTestCase):
         connection_pool = HTTPConnectionPool(reactor, persistent=False)
         treq._utils.set_global_pool(connection_pool)
 
+    def capture_remote_requests(self, response='OK.1234'):
+        def handler(req):
+            reqs.append(req)
+            return response
+
+        reqs = []
+        self.remote_request_handler = handler
+        return reqs
+
     def remote_handle_request(self, req):
         return self.remote_request_handler(req)
 
@@ -156,13 +165,7 @@ class TestVas2NetsSmsTransport(VumiTestCase):
 
     @inlineCallbacks
     def test_outbound_non_reply(self):
-        reqs = []
-
-        def handler(req):
-            reqs.append(req)
-            return 'OK.1234'
-
-        self.remote_request_handler = handler
+        reqs = self.capture_remote_requests()
 
         msg = yield self.tx_helper.make_dispatch_outbound(
             from_addr='456',
@@ -177,6 +180,39 @@ class TestVas2NetsSmsTransport(VumiTestCase):
             'password': ['t00r'],
             'sender': ['456'],
             'receiver': ['+123'],
+        })
+
+        [ack] = yield self.tx_helper.wait_for_dispatched_events(1)
+        self.assertEqual(ack['event_type'], 'ack')
+        self.assertEqual(ack['user_message_id'], msg['message_id'])
+        self.assertEqual(ack['sent_message_id'], msg['message_id'])
+
+    @inlineCallbacks
+    def test_outbound_reply(self):
+        reqs = self.capture_remote_requests()
+
+        yield self.tx_helper.mk_request(
+            sender='+123',
+            receiver='456',
+            msgdata='hi',
+            operator='MTN',
+            recvtime='2012-02-27 19-50-07',
+            msgid='789')
+
+        [in_msg] = yield self.tx_helper.wait_for_dispatched_inbound(1)
+
+        msg = in_msg.reply('hi back')
+        yield self.tx_helper.dispatch_outbound(msg)
+
+        [req] = reqs
+        self.assertEqual(req.method, 'GET')
+        self.assertEqual(req.args, {
+            'username': ['root'],
+            'message': ['hi back'],
+            'password': ['t00r'],
+            'sender': ['456'],
+            'receiver': ['+123'],
+            'message_id': ['789']
         })
 
         [ack] = yield self.tx_helper.wait_for_dispatched_events(1)

@@ -71,6 +71,16 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
             'message': message['content'],
         }
 
+        id = get_in(message, 'transport_metadata', 'vas2nets_sms', 'msgid')
+
+        # from docs:
+        # ```
+        # If MO Message ID is validated, MT will not be charged.
+        # Only One free MT is allowed for each MO.
+        # ```
+        if id is not None:
+            params['message_id'] = id
+
         return params
 
     def get_nack_reason(self, error):
@@ -149,7 +159,6 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
         # TODO ensure required message fields present
         # TODO status event for request timeout
         # TODO status event for succcessful requests
-        # TODO handle MO replies
         resp = yield self.send_message(message)
 
         # NOTE: we are assuming here that they send us a non-200 response for
@@ -167,3 +176,13 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
                 reason=self.get_nack_reason((yield resp.content())))
 
             returnValue(nack)
+
+
+def get_in(data, *keys):
+    for key in keys:
+        data = data.get(key)
+
+        if data is None:
+            return None
+
+    return data
