@@ -13,6 +13,7 @@ setup(
     include_package_data=True,
     install_requires=[
         'vumi>=0.6.0',
+        'treq',
     ],
     classifiers=[
         'Development Status :: 4 - Beta',
