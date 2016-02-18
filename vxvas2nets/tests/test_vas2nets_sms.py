@@ -188,7 +188,8 @@ class TestVas2NetsSmsTransport(VumiTestCase):
     def test_outbound_known_error(self):
         def handler(req):
             req.setResponseCode(400)
-            return remaining_errors.pop()
+            [error] = req.args['message']
+            return error
 
         errors = [
             'ERR-11',
@@ -203,15 +204,14 @@ class TestVas2NetsSmsTransport(VumiTestCase):
             'ERR-52',
         ]
 
-        remaining_errors = errors[:]
-        nack_reasons = []
+        nack_reasons = {}
         self.remote_request_handler = handler
 
         for error in errors:
             msg = yield self.tx_helper.make_dispatch_outbound(
                 from_addr='456',
                 to_addr='+123',
-                content='hi')
+                content=error)
 
             [nack] = yield self.tx_helper.wait_for_dispatched_events(1)
             self.tx_helper.clear_dispatched_events()
@@ -220,20 +220,20 @@ class TestVas2NetsSmsTransport(VumiTestCase):
             self.assertEqual(nack['user_message_id'], msg['message_id'])
             self.assertEqual(nack['sent_message_id'], msg['message_id'])
 
-            nack_reasons.insert(0, nack['nack_reason'])
+            nack_reasons[error] = nack['nack_reason']
 
-        self.assertEqual(nack_reasons, [
-            'Missing username (ERR-11)',
-            'Missing password (ERR-12)',
-            'Missing destination (ERR-13)',
-            'Missing sender id (ERR-14)',
-            'Missing message (ERR-15)',
-            'Ender id too long (ERR-21)',
-            'Invalid login (ERR-33)',
-            'Insufficient credit (ERR-41)',
-            'Invalid destination number (ERR-70)',
-            'System error (ERR-52)',
-        ])
+        self.assertEqual(nack_reasons, {
+            'ERR-11': 'Missing username (ERR-11)',
+            'ERR-12': 'Missing password (ERR-12)',
+            'ERR-13': 'Missing destination (ERR-13)',
+            'ERR-14': 'Missing sender id (ERR-14)',
+            'ERR-15': 'Missing message (ERR-15)',
+            'ERR-21': 'Ender id too long (ERR-21)',
+            'ERR-33': 'Invalid login (ERR-33)',
+            'ERR-41': 'Insufficient credit (ERR-41)',
+            'ERR-70': 'Invalid destination number (ERR-70)',
+            'ERR-52': 'System error (ERR-52)',
+        })
 
     @inlineCallbacks
     def test_outbound_unknown_error(self):
