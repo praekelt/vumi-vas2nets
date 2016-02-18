@@ -157,6 +157,8 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
 
         self.respond(message_id, http.OK, {})
 
+        # TODO publish status
+
     @inlineCallbacks
     def handle_outbound_message(self, message):
         missing_fields = self.ensure_message_values(
