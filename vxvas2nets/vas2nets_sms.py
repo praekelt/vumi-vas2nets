@@ -110,7 +110,6 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
         if body is None:
             body = {}
 
-        # TODO log if original request not found
         self.finish_request(message_id, json.dumps(body), code=code)
 
     def send_message(self, message):
