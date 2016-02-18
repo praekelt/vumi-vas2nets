@@ -37,6 +37,12 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
         'operator'
     ])
 
+    EXPECTED_MESSAGE_FIELDS = frozenset([
+        'from_addr',
+        'to_addr',
+        'content'
+    ])
+
     ENCODING = 'utf-8'
 
     transport_type = 'sms'
@@ -74,10 +80,8 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
         id = get_in(message, 'transport_metadata', 'vas2nets_sms', 'msgid')
 
         # from docs:
-        # ```
-        # If MO Message ID is validated, MT will not be charged.
-        # Only One free MT is allowed for each MO.
-        # ```
+        # If MO Message ID is validated, MT will not be charged.
+        # Only one free MT is allowed for each MO.
         if id is not None:
             params['message_id'] = id
 
@@ -114,6 +118,19 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
             url=self.config['outbound_url'],
             params=self.get_outbound_params(message))
 
+    @inlineCallbacks
+    def handle_raw_inbound_message(self, message_id, request):
+        try:
+            vals, errors = self.get_field_values(request, self.EXPECTED_FIELDS)
+        except UnicodeDecodeError:
+            yield self.handle_decode_error(message_id, request)
+            return
+
+        if errors:
+            yield self.handle_bad_request_fields(message_id, request, errors)
+        else:
+            yield self.handle_inbound_message(message_id, request, vals)
+
     def handle_decode_error(self, message_id, request):
         req = self.get_request_dict(request)
 
@@ -142,21 +159,13 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
         self.respond(message_id, http.OK, {})
 
     @inlineCallbacks
-    def handle_raw_inbound_message(self, message_id, request):
-        try:
-            vals, errors = self.get_field_values(request, self.EXPECTED_FIELDS)
-        except UnicodeDecodeError:
-            yield self.handle_decode_error(message_id, request)
-            return
-
-        if errors:
-            yield self.handle_bad_request_fields(message_id, request, errors)
-        else:
-            yield self.handle_inbound_message(message_id, request, vals)
-
-    @inlineCallbacks
     def handle_outbound_message(self, message):
-        # TODO ensure required message fields present
+        missing_fields = self.ensure_message_values(
+            message, self.EXPECTED_MESSAGE_FIELDS)
+
+        if missing_fields:
+            returnValue((yield self.reject_message(message, missing_fields)))
+
         # TODO status event for request timeout
         # TODO status event for succcessful requests
         resp = yield self.send_message(message)
@@ -164,18 +173,26 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
         # NOTE: we are assuming here that they send us a non-200 response for
         # error cases (this is not mentioned in the docs)
         if resp.code == http.OK:
-            ack = yield self.publish_ack(
-                user_message_id=message['message_id'],
-                sent_message_id=message['message_id'])
-
-            returnValue(ack)
+            returnValue((yield self.handle_outbound_success(message, resp)))
         else:
-            nack = yield self.publish_nack(
-                user_message_id=message['message_id'],
-                sent_message_id=message['message_id'],
-                reason=self.get_nack_reason((yield resp.content())))
+            returnValue((yield self.handle_outbound_fail(message, resp)))
 
-            returnValue(nack)
+    @inlineCallbacks
+    def handle_outbound_success(self, message, resp):
+        ack = yield self.publish_ack(
+            user_message_id=message['message_id'],
+            sent_message_id=message['message_id'])
+
+        returnValue(ack)
+
+    @inlineCallbacks
+    def handle_outbound_fail(self, message, resp):
+        nack = yield self.publish_nack(
+            user_message_id=message['message_id'],
+            sent_message_id=message['message_id'],
+            reason=self.get_nack_reason((yield resp.content())))
+
+        returnValue(nack)
 
 
 def get_in(data, *keys):

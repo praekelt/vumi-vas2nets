@@ -25,7 +25,7 @@ class TestVas2NetsSmsTransport(VumiTestCase):
         self.clock = Clock()
         self.patch(Vas2NetsSmsTransport, 'get_clock', lambda _: self.clock)
 
-        self.remote_request_handler = lambda _: None
+        self.remote_request_handler = lambda _: 'OK.1234'
         self.remote_server = MockHttpServer(self.remote_handle_request)
         yield self.remote_server.start()
         self.addCleanup(self.remote_server.stop)
@@ -289,3 +289,16 @@ class TestVas2NetsSmsTransport(VumiTestCase):
         self.assertEqual(nack['user_message_id'], msg['message_id'])
         self.assertEqual(nack['sent_message_id'], msg['message_id'])
         self.assertEqual(nack['nack_reason'], 'Unknown: foo')
+
+    @inlineCallbacks
+    def test_outbound_missing_fields(self):
+        msg = yield self.tx_helper.make_dispatch_outbound(
+            from_addr='456',
+            to_addr='+123',
+            content=None)
+
+        [nack] = yield self.tx_helper.wait_for_dispatched_events(1)
+        self.assertEqual(nack['event_type'], 'nack')
+        self.assertEqual(nack['user_message_id'], msg['message_id'])
+        self.assertEqual(nack['sent_message_id'], msg['message_id'])
+        self.assertEqual(nack['nack_reason'], 'Missing fields: content')
