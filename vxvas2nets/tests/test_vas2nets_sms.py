@@ -158,10 +158,13 @@ class TestVas2NetsSmsTransport(VumiTestCase):
         self.assertTrue("msgdata" in error)
         self.assertTrue("receiver" in error)
 
-        self.assert_contains_items(json.loads(res.delivered_body), {
-            'unexpected_parameter': ['foo'],
-            'missing_parameter': ['msgdata', 'receiver'],
-        })
+        body = json.loads(res.delivered_body)
+
+        self.assertEqual(body['unexpected_parameter'], ['foo'])
+
+        self.assertEqual(
+            sorted(body['missing_parameter']),
+            ['msgdata', 'receiver'])
 
     @inlineCallbacks
     def test_outbound_non_reply(self):
