@@ -152,6 +152,8 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
         # TODO handle MO replies
         resp = yield self.send_message(message)
 
+        # NOTE: we are assuming here that they send us a non-200 response for
+        # error cases (this is not mentioned in the docs)
         if resp.code == http.OK:
             ack = yield self.publish_ack(
                 user_message_id=message['message_id'],
