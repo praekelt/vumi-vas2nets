@@ -187,6 +187,15 @@ class TestVas2NetsSmsTransport(VumiTestCase):
             'sent_message_id': msg['message_id'],
         })
 
+        [status] = self.tx_helper.get_dispatched_statuses()
+
+        self.assert_contains_items(status, {
+            'status': 'ok',
+            'component': 'outbound',
+            'type': 'request_success',
+            'message': 'Request successful',
+        })
+
     @inlineCallbacks
     def test_outbound_reply(self):
         reqs = self.capture_remote_requests()
@@ -222,6 +231,15 @@ class TestVas2NetsSmsTransport(VumiTestCase):
             'sent_message_id': msg['message_id'],
         })
 
+        [status] = self.tx_helper.get_dispatched_statuses()
+
+        self.assert_contains_items(status, {
+            'status': 'ok',
+            'component': 'outbound',
+            'type': 'request_success',
+            'message': 'Request successful',
+        })
+
     @inlineCallbacks
     def test_outbound_known_error(self):
         def handler(req):
@@ -229,30 +247,23 @@ class TestVas2NetsSmsTransport(VumiTestCase):
             [error] = req.args['message']
             return error
 
-        errors = [
-            'ERR-11',
-            'ERR-12',
-            'ERR-13',
-            'ERR-14',
-            'ERR-15',
-            'ERR-21',
-            'ERR-33',
-            'ERR-41',
-            'ERR-70',
-            'ERR-52',
-        ]
-
-        nack_reasons = {}
         self.remote_request_handler = handler
 
-        for error in errors:
+        nacks = {}
+        statuses = {}
+
+        for error in self.transport.SEND_FAIL_TYPES.iterkeys():
             msg = yield self.tx_helper.make_dispatch_outbound(
                 from_addr='456',
                 to_addr='+123',
                 content=error)
 
             [nack] = yield self.tx_helper.wait_for_dispatched_events(1)
+            [status] = self.tx_helper.get_dispatched_statuses()
             self.tx_helper.clear_dispatched_events()
+            self.tx_helper.clear_dispatched_statuses()
+            nacks[error] = nack
+            statuses[error] = status
 
             self.assert_contains_items(nack, {
                 'event_type': 'nack',
@@ -260,20 +271,22 @@ class TestVas2NetsSmsTransport(VumiTestCase):
                 'sent_message_id': msg['message_id'],
             })
 
-            nack_reasons[error] = nack['nack_reason']
+            self.assert_contains_items(status, {
+                'status': 'down',
+                'component': 'outbound',
+            })
 
-        self.assertEqual(nack_reasons, {
-            'ERR-11': 'Missing username (ERR-11)',
-            'ERR-12': 'Missing password (ERR-12)',
-            'ERR-13': 'Missing destination (ERR-13)',
-            'ERR-14': 'Missing sender id (ERR-14)',
-            'ERR-15': 'Missing message (ERR-15)',
-            'ERR-21': 'Ender id too long (ERR-21)',
-            'ERR-33': 'Invalid login (ERR-33)',
-            'ERR-41': 'Insufficient credit (ERR-41)',
-            'ERR-70': 'Invalid destination number (ERR-70)',
-            'ERR-52': 'System error (ERR-52)',
-        })
+        self.assertEqual(
+            map_get(nacks, 'nack_reason'),
+            self.transport.SEND_FAIL_REASONS)
+
+        self.assertEqual(
+            map_get(statuses, 'message'),
+            self.transport.SEND_FAIL_REASONS)
+
+        self.assertEqual(
+            map_get(statuses, 'type'),
+            self.transport.SEND_FAIL_TYPES)
 
     @inlineCallbacks
     def test_outbound_unknown_error(self):
@@ -293,7 +306,16 @@ class TestVas2NetsSmsTransport(VumiTestCase):
             'event_type': 'nack',
             'user_message_id': msg['message_id'],
             'sent_message_id': msg['message_id'],
-            'nack_reason': 'Unknown: foo',
+            'nack_reason': 'Unknown request failure: foo',
+        })
+
+        [status] = self.tx_helper.get_dispatched_statuses()
+
+        self.assert_contains_items(status, {
+            'status': 'down',
+            'component': 'outbound',
+            'type': 'request_fail_unknown',
+            'message': 'Unknown request failure: foo',
         })
 
     @inlineCallbacks
@@ -310,3 +332,7 @@ class TestVas2NetsSmsTransport(VumiTestCase):
             'sent_message_id': msg['message_id'],
             'nack_reason': 'Missing fields: content',
         })
+
+
+def map_get(collection, key):
+    return dict((k, d.get(key)) for (k, d) in collection.iteritems())

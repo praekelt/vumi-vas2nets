@@ -1,11 +1,11 @@
 import json
 import treq
-from twisted.web import http
 
-from twisted.internet.defer import inlineCallbacks, returnValue
+from twisted.web import http
+from twisted.internet.defer import inlineCallbacks, returnValue, CancelledError
 
 from vumi import log
-from vumi.config import ConfigText
+from vumi.config import ConfigText, ConfigInt
 from vumi.transports.httprpc import HttpRpcTransport
 
 
@@ -15,6 +15,11 @@ class Vas2NetsSmsTransportConfig(HttpRpcTransport.CONFIG_CLASS):
     outbound_url = ConfigText(
         "Url to use for outbound messages",
         required=True)
+
+    outbound_request_timeout = ConfigInt(
+        "Timeout duration in seconds for requests for sending messages, or "
+        "null for no timeout",
+        default=None)
 
     username = ConfigText(
         "Username to use for outbound messages",
@@ -42,6 +47,32 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
         'to_addr',
         'content'
     ])
+
+    SEND_FAIL_TYPES = {
+        'ERR-11': 'missing_username',
+        'ERR-12': 'missing_password',
+        'ERR-13': 'missing_destination',
+        'ERR-14': 'missing_sender_id',
+        'ERR-15': 'missing_message',
+        'ERR-21': 'ender_id_too_long',
+        'ERR-33': 'invalid_login',
+        'ERR-41': 'insufficient_credit',
+        'ERR-70': 'invalid_destination_number',
+        'ERR-52': 'system_error',
+    }
+
+    SEND_FAIL_REASONS = {
+        'ERR-11': 'Missing username (ERR-11)',
+        'ERR-12': 'Missing password (ERR-12)',
+        'ERR-13': 'Missing destination (ERR-13)',
+        'ERR-14': 'Missing sender id (ERR-14)',
+        'ERR-15': 'Missing message (ERR-15)',
+        'ERR-21': 'Ender id too long (ERR-21)',
+        'ERR-33': 'Invalid login (ERR-33)',
+        'ERR-41': 'Insufficient credit (ERR-41)',
+        'ERR-70': 'Invalid destination number (ERR-70)',
+        'ERR-52': 'System error (ERR-52)'
+    }
 
     ENCODING = 'utf-8'
 
@@ -87,24 +118,12 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
 
         return params
 
-    def get_nack_reason(self, error):
-        description = {
-            'ERR-11': 'Missing username',
-            'ERR-12': 'Missing password',
-            'ERR-13': 'Missing destination',
-            'ERR-14': 'Missing sender id',
-            'ERR-15': 'Missing message',
-            'ERR-21': 'Ender id too long',
-            'ERR-33': 'Invalid login',
-            'ERR-41': 'Insufficient credit',
-            'ERR-70': 'Invalid destination number',
-            'ERR-52': 'System error'
-        }.get(error)
+    def get_send_fail_reason(self, error):
+        return self.SEND_FAIL_REASONS.get(
+            error, "Unknown request failure: %s" % (error,))
 
-        if description is not None:
-            return "%s (%s)" % (description, error)
-        else:
-            return "Unknown: %s" % (error,)
+    def get_send_fail_type(self, error):
+        return self.SEND_FAIL_TYPES.get(error, 'request_fail_unknown')
 
     def respond(self, message_id, code, body=None):
         if body is None:
@@ -115,7 +134,8 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
     def send_message(self, message):
         return treq.get(
             url=self.config['outbound_url'],
-            params=self.get_outbound_params(message))
+            params=self.get_outbound_params(message),
+            timeout=self.config.get('outbound_request_timeout'))
 
     @inlineCallbacks
     def handle_raw_inbound_message(self, message_id, request):
@@ -167,9 +187,10 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
         if missing_fields:
             returnValue((yield self.reject_message(message, missing_fields)))
 
-        # TODO status event for request timeout
-        # TODO status event for succcessful requests
-        resp = yield self.send_message(message)
+        try:
+            resp = yield self.send_message(message)
+        except CancelledError:
+            yield self.handle_send_timeout(message)
 
         # NOTE: we are assuming here that they send us a non-200 response for
         # error cases (this is not mentioned in the docs)
@@ -179,19 +200,42 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
             returnValue((yield self.handle_outbound_fail(message, resp)))
 
     @inlineCallbacks
+    def handle_send_timeout(self, message):
+        yield self.add_status(
+            component='outbound',
+            status='down',
+            type='request_timeout',
+            message='Request timeout')
+
+    @inlineCallbacks
     def handle_outbound_success(self, message, resp):
         ack = yield self.publish_ack(
             user_message_id=message['message_id'],
             sent_message_id=message['message_id'])
 
+        yield self.add_status(
+            component='outbound',
+            status='ok',
+            type='request_success',
+            message='Request successful')
+
         returnValue(ack)
 
     @inlineCallbacks
     def handle_outbound_fail(self, message, resp):
+        error = (yield resp.content())
+        reason = self.get_send_fail_reason(error)
+
         nack = yield self.publish_nack(
             user_message_id=message['message_id'],
             sent_message_id=message['message_id'],
-            reason=self.get_nack_reason((yield resp.content())))
+            reason=reason)
+
+        yield self.add_status(
+            component='outbound',
+            status='down',
+            type=self.get_send_fail_type(error),
+            message=reason)
 
         returnValue(nack)
 
