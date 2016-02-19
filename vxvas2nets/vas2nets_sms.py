@@ -16,6 +16,10 @@ class Vas2NetsSmsTransportConfig(HttpRpcTransport.CONFIG_CLASS):
         "Url to use for outbound messages",
         required=True)
 
+    reply_outbound_url = ConfigText(
+        "Url to use for reply outbound messages",
+        required=True)
+
     username = ConfigText(
         "Username to use for outbound messages",
         required=True)
@@ -68,6 +72,14 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
             'transport_metadata': {'vas2nets_sms': {'msgid': vals['msgid']}}
         }
 
+    def get_outbound_url(self, message):
+        id = get_in(message, 'transport_metadata', 'vas2nets_sms', 'msgid')
+
+        if id is not None:
+            return self.config['reply_outbound_url']
+        else:
+            return self.config['outbound_url']
+
     def get_outbound_params(self, message):
         params = {
             'username': self.config['username'],
@@ -86,6 +98,9 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
             params['message_id'] = id
 
         return params
+
+    def is_mo_response(self, message):
+        return get_in(message, 'transport_metadata', 'vas2nets_sms', 'msgid')
 
     def get_nack_reason(self, error):
         description = {
@@ -114,11 +129,13 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
 
     def send_message(self, message):
         return treq.get(
-            url=self.config['outbound_url'],
+            url=self.get_outbound_url(message),
             params=self.get_outbound_params(message))
 
     @inlineCallbacks
     def handle_raw_inbound_message(self, message_id, request):
+        log.msg("asfsdf")
+
         try:
             vals, errors = self.get_field_values(request, self.EXPECTED_FIELDS)
         except UnicodeDecodeError:

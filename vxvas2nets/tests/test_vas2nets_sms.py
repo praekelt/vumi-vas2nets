@@ -2,6 +2,7 @@
 
 import json
 from urllib import urlencode
+from urlparse import urljoin
 
 from twisted.web import http
 from twisted.internet import reactor
@@ -34,7 +35,8 @@ class TestVas2NetsSmsTransport(VumiTestCase):
             'web_port': 0,
             'web_path': '/api/v1/vas2nets/sms/',
             'publish_status': True,
-            'outbound_url': self.remote_server.url,
+            'outbound_url': urljoin(self.remote_server.url, 'nonreply'),
+            'reply_outbound_url': urljoin(self.remote_server.url, 'reply'),
             'username': 'root',
             'password': 't00r',
         }
@@ -171,6 +173,8 @@ class TestVas2NetsSmsTransport(VumiTestCase):
             content='hi')
 
         [req] = reqs
+
+        self.assertTrue(req.uri.startswith('/nonreply'))
         self.assertEqual(req.method, 'GET')
         self.assertEqual(req.args, {
             'username': ['root'],
@@ -203,6 +207,7 @@ class TestVas2NetsSmsTransport(VumiTestCase):
         yield self.tx_helper.dispatch_outbound(msg)
 
         [req] = reqs
+        self.assertTrue(req.uri.startswith('/reply'))
         self.assertEqual(req.method, 'GET')
         self.assertEqual(req.args, {
             'username': ['root'],
