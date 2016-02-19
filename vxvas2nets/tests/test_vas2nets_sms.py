@@ -181,9 +181,11 @@ class TestVas2NetsSmsTransport(VumiTestCase):
         })
 
         [ack] = yield self.tx_helper.wait_for_dispatched_events(1)
-        self.assertEqual(ack['event_type'], 'ack')
-        self.assertEqual(ack['user_message_id'], msg['message_id'])
-        self.assertEqual(ack['sent_message_id'], msg['message_id'])
+
+        self.assert_contains_items(ack, {
+            'user_message_id': msg['message_id'],
+            'sent_message_id': msg['message_id'],
+        })
 
     @inlineCallbacks
     def test_outbound_reply(self):
@@ -214,9 +216,11 @@ class TestVas2NetsSmsTransport(VumiTestCase):
         })
 
         [ack] = yield self.tx_helper.wait_for_dispatched_events(1)
-        self.assertEqual(ack['event_type'], 'ack')
-        self.assertEqual(ack['user_message_id'], msg['message_id'])
-        self.assertEqual(ack['sent_message_id'], msg['message_id'])
+
+        self.assert_contains_items(ack, {
+            'user_message_id': msg['message_id'],
+            'sent_message_id': msg['message_id'],
+        })
 
     @inlineCallbacks
     def test_outbound_known_error(self):
@@ -250,9 +254,11 @@ class TestVas2NetsSmsTransport(VumiTestCase):
             [nack] = yield self.tx_helper.wait_for_dispatched_events(1)
             self.tx_helper.clear_dispatched_events()
 
-            self.assertEqual(nack['event_type'], 'nack')
-            self.assertEqual(nack['user_message_id'], msg['message_id'])
-            self.assertEqual(nack['sent_message_id'], msg['message_id'])
+            self.assert_contains_items(nack, {
+                'event_type': 'nack',
+                'user_message_id': msg['message_id'],
+                'sent_message_id': msg['message_id'],
+            })
 
             nack_reasons[error] = nack['nack_reason']
 
@@ -283,10 +289,12 @@ class TestVas2NetsSmsTransport(VumiTestCase):
             content='hi')
 
         [nack] = yield self.tx_helper.wait_for_dispatched_events(1)
-        self.assertEqual(nack['event_type'], 'nack')
-        self.assertEqual(nack['user_message_id'], msg['message_id'])
-        self.assertEqual(nack['sent_message_id'], msg['message_id'])
-        self.assertEqual(nack['nack_reason'], 'Unknown: foo')
+        self.assert_contains_items(nack, {
+            'event_type': 'nack',
+            'user_message_id': msg['message_id'],
+            'sent_message_id': msg['message_id'],
+            'nack_reason': 'Unknown: foo',
+        })
 
     @inlineCallbacks
     def test_outbound_missing_fields(self):
@@ -296,7 +304,9 @@ class TestVas2NetsSmsTransport(VumiTestCase):
             content=None)
 
         [nack] = yield self.tx_helper.wait_for_dispatched_events(1)
-        self.assertEqual(nack['event_type'], 'nack')
-        self.assertEqual(nack['user_message_id'], msg['message_id'])
-        self.assertEqual(nack['sent_message_id'], msg['message_id'])
-        self.assertEqual(nack['nack_reason'], 'Missing fields: content')
+        self.assert_contains_items(nack, {
+            'event_type': 'nack',
+            'user_message_id': msg['message_id'],
+            'sent_message_id': msg['message_id'],
+            'nack_reason': 'Missing fields: content',
+        })
