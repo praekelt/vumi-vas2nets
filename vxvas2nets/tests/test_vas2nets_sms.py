@@ -77,6 +77,19 @@ class TestVas2NetsSmsTransport(VumiTestCase):
             sorted(actual_params.split('&')),
             sorted(urlencode(params).split('&')))
 
+    def assert_request_params(self, req, params):
+        self.assert_contains_items(req, {
+            'method': 'GET',
+            'path': self.config['web_path'],
+            'content': '',
+            'headers': {
+                'Connection': ['close'],
+                'Host': [self.get_host()]
+            }
+        })
+
+        self.assert_uri(req['uri'], self.config['web_path'], params)
+
     @inlineCallbacks
     def test_inbound(self):
         res = yield self.tx_helper.mk_request(
@@ -102,6 +115,15 @@ class TestVas2NetsSmsTransport(VumiTestCase):
             }
         })
 
+        [status] = self.tx_helper.get_dispatched_statuses()
+
+        self.assert_contains_items(status, {
+            'status': 'ok',
+            'component': 'inbound',
+            'type': 'request_success',
+            'message': 'Request successful',
+        })
+
     @inlineCallbacks
     def test_inbound_decode_error(self):
         with LogCatcher() as lc:
@@ -118,17 +140,25 @@ class TestVas2NetsSmsTransport(VumiTestCase):
 
         req = json.loads(res.delivered_body)['invalid_request']
 
-        self.assert_contains_items(req, {
-            'method': 'GET',
-            'path': self.config['web_path'],
-            'content': '',
-            'headers': {
-                'Connection': ['close'],
-                'Host': [self.get_host()]
-            }
+        self.assert_request_params(req, {
+            'sender': '+123',
+            'receiver': '456',
+            'msgdata': u'ポケモン'.encode('utf-16'),
+            'operator': 'MTN',
+            'recvtime': '2012-02-27 19-50-07',
+            'msgid': '789'
         })
 
-        self.assert_uri(req['uri'], self.config['web_path'], {
+        [status] = self.tx_helper.get_dispatched_statuses()
+
+        self.assert_contains_items(status, {
+            'status': 'down',
+            'component': 'inbound',
+            'type': 'request_decode_error',
+            'message': 'Bad request encoding',
+        })
+
+        self.assert_request_params(status['details']['request'], {
             'sender': '+123',
             'receiver': '456',
             'msgdata': u'ポケモン'.encode('utf-16'),
@@ -155,10 +185,37 @@ class TestVas2NetsSmsTransport(VumiTestCase):
 
         body = json.loads(res.delivered_body)
 
-        self.assertEqual(body['unexpected_parameter'], ['foo'])
+        self.assertEqual(
+            body['unexpected_parameter'],
+            ['foo'])
 
         self.assertEqual(
             sorted(body['missing_parameter']),
+            ['msgdata', 'receiver'])
+
+        [status] = self.tx_helper.get_dispatched_statuses()
+
+        self.assert_contains_items(status, {
+            'status': 'down',
+            'component': 'inbound',
+            'type': 'request_bad_fields',
+            'message': 'Bad request fields',
+        })
+
+        self.assert_request_params(status['details']['request'], {
+            'sender': '+123',
+            'foo': '456',
+            'operator': 'MTN',
+            'recvtime': '2012-02-27 19-50-07',
+            'msgid': '789'
+        })
+
+        self.assertEqual(
+            status['details']['errors']['unexpected_parameter'],
+            ['foo'])
+
+        self.assertEqual(
+            sorted(status['details']['errors']['missing_parameter']),
             ['msgdata', 'receiver'])
 
     @inlineCallbacks
@@ -211,6 +268,7 @@ class TestVas2NetsSmsTransport(VumiTestCase):
         [in_msg] = yield self.tx_helper.wait_for_dispatched_inbound(1)
 
         msg = in_msg.reply('hi back')
+        self.tx_helper.clear_dispatched_statuses()
         yield self.tx_helper.dispatch_outbound(msg)
 
         [req] = reqs

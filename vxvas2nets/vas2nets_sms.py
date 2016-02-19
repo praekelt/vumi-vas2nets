@@ -150,6 +150,7 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
         else:
             yield self.handle_inbound_message(message_id, request, vals)
 
+    @inlineCallbacks
     def handle_decode_error(self, message_id, request):
         req = self.get_request_dict(request)
 
@@ -157,8 +158,14 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
 
         self.respond(message_id, http.BAD_REQUEST, {'invalid_request': req})
 
-        # TODO publish status
+        yield self.add_status(
+            component='inbound',
+            status='down',
+            type='request_decode_error',
+            message='Bad request encoding',
+            details={'request': req})
 
+    @inlineCallbacks
     def handle_bad_request_fields(self, message_id, request, errors):
         req = self.get_request_dict(request)
 
@@ -168,7 +175,15 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
 
         self.respond(message_id, http.BAD_REQUEST, errors)
 
-        # TODO publish status
+        yield self.add_status(
+            component='inbound',
+            status='down',
+            type='request_bad_fields',
+            message='Bad request fields',
+            details={
+                'request': req,
+                'errors': errors
+            })
 
     @inlineCallbacks
     def handle_inbound_message(self, message_id, request, vals):
@@ -177,7 +192,11 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
 
         self.respond(message_id, http.OK, {})
 
-        # TODO publish status
+        yield self.add_status(
+            component='inbound',
+            status='ok',
+            type='request_success',
+            message='Request successful')
 
     @inlineCallbacks
     def handle_outbound_message(self, message):
