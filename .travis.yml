@@ -17,3 +17,11 @@ script:
   - $COVERAGE_CMD `which trial` vxvas2nets
 after_success:
   - if [ -z "$NO_COVERAGE" ]; then coveralls; fi
+deploy:
+  provider: pypi
+  user: Praekelt
+  password:
+    secure: "DXsGx8WthnapIq54SMtR7bG+6Rjka2saTiuDooAliV38qkOjBEBkZNgyp2zqPbbVWG+JKdwLhs7fOhGPo2Wwu1YH+24MVDYHvFTxUnHwcfkz86Fqg8LwXUG/av98FgOT1U+La9hG/k5Vruj7Qt+OTAu4+3SwvBv0ak/2nOtJCxsv/A69d0OSGtLQMia94V6+YtTGV4Gz60eJGKaIBC3ANOKiWiIaZjIujBQTiuy6jRK0sMAgsunBCTIvJm3vzgFnvPrXgKa5VGqu1ZBhikwVygrd6eQbDg+Qwp87UCWuZNhaHu8rBvdgLvhPNNbLYDzFAciP+4sh+CnhGSXgaC+jzx0/mZ63EZCTXH7M4ZhE+KrDAZgXRlYej2kUYkPX6kDsg+32jtq9FQQne7uO8a2WKVl2atYagiSfbZrXZR9/N9ftnopSUVNA1qUda4oY4vQ4m9GeSOeG9mtiRfeBoeYmtCft1CxL38PlGVxJXURrVTiSDFEB4lnLa9RfMip0V8eAl7iKL7M7wqajdvISk2H+J0CQG0mb7+aGX1GlBTUfXq9wzGo6dKugU/0gjWGVnUhmO5dh3JGaDH3aq4MdX4YF8h4ZNHUjXzwkgt62cg5H4gglHTuseY18qN7JatnDl3Fa515hmiwBqJo1i5flWQS9576iqcg6jxw+wHK0/li2UaA="
+  on:
+    tags: true
+    all_branches: true

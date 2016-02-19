@@ -47,7 +47,7 @@ class TestVas2NetsUssdTransport(VumiTestCase):
         '''If there is a new request created, there should be a new inbound
         message.'''
         self.tx_helper.mk_request(
-            userdata='test', endofsession=False, msisdn='+123', sessionid='4')
+            userdata='test', msisdn='+123', sessionid='4')
         [msg] = yield self.tx_helper.wait_for_dispatched_inbound(1)
         self.assert_message(
             msg, content='test', from_addr='+123', from_addr_type='msisdn',
@@ -58,33 +58,10 @@ class TestVas2NetsUssdTransport(VumiTestCase):
         self.transport.close_request(msg['message_id'])
 
     @inlineCallbacks
-    def test_inbound_message_end_of_session(self):
-        '''If an inbound message comes in that signals the end of the session,
-        the session_event should be a SESSION_CLOSE, and the session should
-        be removed.'''
-        yield self.transport.session_manager.create_session('4', foo='bar')
-        response = yield self.tx_helper.mk_request(
-            userdata='test', endofsession='true', msisdn='+123', sessionid='4')
-        self.assertEqual(json.loads(response.delivered_body), {
-            'endofsession': True,
-            'userdata': '',
-            'msisdn': '+123',
-        })
-        [msg] = yield self.tx_helper.wait_for_dispatched_inbound(1)
-        self.assert_message(
-            msg, content='test', from_addr='+123', from_addr_type='msisdn',
-            provider='vas2nets',
-            session_event=TransportUserMessage.SESSION_CLOSE,
-            transport_metadata={'vas2nets_ussd': {'sessionid': '4'}})
-        self.assertEqual(self.transport.get_request(msg['message_id']), None)
-        session = yield self.transport.session_manager.load_session('4')
-        self.assertEqual(session, {})
-
-    @inlineCallbacks
     def test_inbound_status(self):
         '''A status should be sent if the message was decoded correctly'''
         self.tx_helper.mk_request(
-            userdata='test', endofsession=False, msisdn='+123', sessionid='4')
+            userdata='test', msisdn='+123', sessionid='4')
         [msg] = yield self.tx_helper.wait_for_dispatched_inbound(1)
         [status] = yield self.tx_helper.get_dispatched_statuses()
 
@@ -101,7 +78,7 @@ class TestVas2NetsUssdTransport(VumiTestCase):
         '''If the content cannot be decoded, an error should be sent back'''
         userdata = "Who are you?".encode('utf-32')
         response = yield self.tx_helper.mk_request(
-            userdata=userdata, endofsession=False, msisdn='+123',
+            userdata=userdata, msisdn='+123',
             sessionid='4')
         self.assertEqual(response.code, 400)
 
@@ -119,7 +96,7 @@ class TestVas2NetsUssdTransport(VumiTestCase):
         '''If the request cannot be decoded, a status event should be sent'''
         userdata = "Who are you?".encode('utf-32')
         yield self.tx_helper.mk_request(
-            userdata=userdata, endofsession=False, msisdn='+123',
+            userdata=userdata, msisdn='+123',
             sessionid='4')
 
         [status] = self.tx_helper.get_dispatched_statuses()
@@ -145,7 +122,7 @@ class TestVas2NetsUssdTransport(VumiTestCase):
         self.assertEqual(set(['missing_parameter']), set(body.keys()))
         self.assertEqual(
             sorted(body['missing_parameter']),
-            ['endofsession', 'msisdn', 'sessionid', 'userdata'])
+            ['msisdn', 'sessionid', 'userdata'])
         self.assertEqual(response.code, 400)
 
     @inlineCallbacks
@@ -159,14 +136,14 @@ class TestVas2NetsUssdTransport(VumiTestCase):
         self.assertEqual(status['type'], 'invalid_inbound_fields')
         self.assertEqual(
             sorted(status['details']['missing_parameter']),
-            ['endofsession', 'msisdn', 'sessionid', 'userdata'])
+            ['msisdn', 'sessionid', 'userdata'])
 
     @inlineCallbacks
     def test_request_with_unexpected_parameters(self):
         '''If the request has unexpected parameters, an error should be sent
         back'''
         response = yield self.tx_helper.mk_request(
-            userdata='', endofsession=False, msisdn='+123', sessionid='4',
+            userdata='', msisdn='+123', sessionid='4',
             unexpected_p1='', unexpected_p2='')
 
         self.assertEqual(response.code, 400)
@@ -181,7 +158,7 @@ class TestVas2NetsUssdTransport(VumiTestCase):
         '''A request with unexpected parameters should send a TransportStatus
         with the relevant details.'''
         yield self.tx_helper.mk_request(
-            userdata='', endofsession=False, msisdn='+123', sessionid='4',
+            userdata='', msisdn='+123', sessionid='4',
             unexpected_p1='', unexpected_p2='')
 
         [status] = yield self.tx_helper.get_dispatched_statuses()
@@ -198,7 +175,7 @@ class TestVas2NetsUssdTransport(VumiTestCase):
         yield self.transport.session_manager.create_session('4')
 
         d = self.tx_helper.mk_request(
-            userdata='test', endofsession=False, msisdn='+123', sessionid='4')
+            userdata='test', msisdn='+123', sessionid='4')
         [msg] = yield self.tx_helper.wait_for_dispatched_inbound(1)
         self.assert_message(
             msg, session_event=TransportUserMessage.SESSION_RESUME,
@@ -226,7 +203,7 @@ class TestVas2NetsUssdTransport(VumiTestCase):
         yield self.transport.session_manager.create_session('4')
 
         d = self.tx_helper.mk_request(
-            userdata='test', endofsession=False, msisdn='+123', sessionid='4')
+            userdata='test', msisdn='+123', sessionid='4')
         [msg] = yield self.tx_helper.wait_for_dispatched_inbound(1)
         self.assert_message(
             msg, session_event=TransportUserMessage.SESSION_RESUME,
@@ -271,7 +248,7 @@ class TestVas2NetsUssdTransport(VumiTestCase):
     def test_status_quick_response(self):
         '''Ok status event should be sent if the response is quick.'''
         d = self.tx_helper.mk_request(
-            userdata='test', endofsession=False, msisdn='+123', sessionid='4')
+            userdata='test', msisdn='+123', sessionid='4')
         [msg] = yield self.tx_helper.wait_for_dispatched_inbound(1)
         yield self.tx_helper.clear_dispatched_statuses()
 
@@ -289,7 +266,7 @@ class TestVas2NetsUssdTransport(VumiTestCase):
         '''A degraded status event should be sent if the response took longer
         than 1 second.'''
         d = self.tx_helper.mk_request(
-            userdata='test', endofsession=False, msisdn='+123', sessionid='4')
+            userdata='test', msisdn='+123', sessionid='4')
         [msg] = yield self.tx_helper.wait_for_dispatched_inbound(1)
         yield self.tx_helper.clear_dispatched_statuses()
 
@@ -311,7 +288,7 @@ class TestVas2NetsUssdTransport(VumiTestCase):
         '''A down status event should be sent if the response took longer
         than 10 seconds.'''
         d = self.tx_helper.mk_request(
-            userdata='test', endofsession=False, msisdn='+123', sessionid='4')
+            userdata='test', msisdn='+123', sessionid='4')
         [msg] = yield self.tx_helper.wait_for_dispatched_inbound(1)
         yield self.tx_helper.clear_dispatched_statuses()
 
@@ -345,7 +322,7 @@ class TestVas2NetsUssdTransport(VumiTestCase):
         status event shouldn't be sent, because we send different status
         events for those errors.'''
         d = self.tx_helper.mk_request(
-            userdata='test', endofsession=False, msisdn='+123', sessionid='4')
+            userdata='test', msisdn='+123', sessionid='4')
 
         [msg] = yield self.tx_helper.wait_for_dispatched_inbound(1)
         yield self.tx_helper.clear_dispatched_statuses()
@@ -363,7 +340,7 @@ class TestVas2NetsUssdTransport(VumiTestCase):
         status event shouldn't be sent, because we send different status
         events for those errors.'''
         d = self.tx_helper.mk_request(
-            userdata='test', endofsession=False, msisdn='+123', sessionid='4')
+            userdata='test', msisdn='+123', sessionid='4')
 
         [msg] = yield self.tx_helper.wait_for_dispatched_inbound(1)
         yield self.tx_helper.clear_dispatched_statuses()
@@ -383,7 +360,7 @@ class TestVas2NetsUssdTransport(VumiTestCase):
         status event shouldn't be sent, because we send different status
         events for those errors.'''
         d = self.tx_helper.mk_request(
-            userdata='test', endofsession=False, msisdn='+123', sessionid='4')
+            userdata='test', msisdn='+123', sessionid='4')
 
         [msg] = yield self.tx_helper.wait_for_dispatched_inbound(1)
         yield self.tx_helper.clear_dispatched_statuses()
@@ -401,7 +378,7 @@ class TestVas2NetsUssdTransport(VumiTestCase):
     def test_status_down_timeout(self):
         '''A down status event should be sent if the response timed out'''
         d = self.tx_helper.mk_request(
-            userdata='test', endofsession=False, msisdn='+123', sessionid='4')
+            userdata='test', msisdn='+123', sessionid='4')
         [msg] = yield self.tx_helper.wait_for_dispatched_inbound(1)
         yield self.tx_helper.clear_dispatched_statuses()
 

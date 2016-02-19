@@ -13,7 +13,7 @@ class Vas2NetsUssdTransportConfig(HttpRpcTransport.CONFIG_CLASS):
     ussd_session_timeout = ConfigInt(
         "Number of seconds before USSD session information stored in Redis"
         " expires.",
-        default=600, static=True)
+        default=60, static=True)
 
     redis_manager = ConfigDict(
         "Redis client configuration.", default={}, static=True)
@@ -26,7 +26,7 @@ class Vas2NetsUssdTransportConfig(HttpRpcTransport.CONFIG_CLASS):
 class Vas2NetsUssdTransport(HttpRpcTransport):
     CONFIG_CLASS = Vas2NetsUssdTransportConfig
     EXPECTED_FIELDS = frozenset([
-        'userdata', 'endofsession', 'msisdn', 'sessionid',
+        'userdata', 'msisdn', 'sessionid',
     ])
 
     transport_type = 'ussd'
@@ -51,11 +51,7 @@ class Vas2NetsUssdTransport(HttpRpcTransport):
         }
 
     @inlineCallbacks
-    def session_event_for_transaction(self, session_id, endofsession):
-        if endofsession == 'true':
-            yield self.session_manager.clear_session(session_id)
-            returnValue(TransportUserMessage.SESSION_CLOSE)
-
+    def session_event_for_transaction(self, session_id):
         session = yield self.session_manager.load_session(session_id)
         if session:
             yield self.session_manager.save_session(session_id, session)
@@ -97,14 +93,7 @@ class Vas2NetsUssdTransport(HttpRpcTransport):
             message='Request parsed',)
 
         session_event = yield self.session_event_for_transaction(
-            values['sessionid'], values['endofsession'])
-
-        if session_event == TransportUserMessage.SESSION_CLOSE:
-            self.finish_request(message_id, json.dumps({
-                'userdata': '',
-                'endofsession': True,
-                'msisdn': values['msisdn'],
-            }))
+            values['sessionid'])
 
         yield self.publish_message(
             message_id=message_id,
