@@ -134,8 +134,6 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
 
     @inlineCallbacks
     def handle_raw_inbound_message(self, message_id, request):
-        log.msg("asfsdf")
-
         try:
             vals, errors = self.get_field_values(request, self.EXPECTED_FIELDS)
         except UnicodeDecodeError:
