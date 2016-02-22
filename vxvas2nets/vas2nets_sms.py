@@ -210,6 +210,7 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
             resp = yield self.send_message(message)
         except CancelledError:
             yield self.handle_send_timeout(message)
+            return
 
         # NOTE: we are assuming here that they send us a non-200 response for
         # error cases (this is not mentioned in the docs)
