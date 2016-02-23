@@ -2,7 +2,8 @@ import json
 import treq
 
 from twisted.web import http
-from twisted.internet.defer import inlineCallbacks, returnValue
+from twisted.internet.defer import inlineCallbacks, returnValue, CancelledError
+from twisted.internet.error import ConnectingCancelledError
 from twisted.web._newclient import ResponseNeverReceived
 
 from vumi import log
@@ -207,7 +208,8 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
 
         try:
             resp = yield self.send_message(message)
-        except ResponseNeverReceived:
+        except (ResponseNeverReceived, ConnectingCancelledError,
+                CancelledError):
             yield self.handle_send_timeout(message)
             return
 

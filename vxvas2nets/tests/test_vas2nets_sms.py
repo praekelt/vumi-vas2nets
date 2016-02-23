@@ -6,7 +6,7 @@ from urllib import urlencode
 from twisted.web import http
 from twisted.internet import reactor
 from twisted.internet.task import Clock
-from twisted.internet.defer import inlineCallbacks, returnValue
+from twisted.internet.defer import inlineCallbacks, returnValue, Deferred
 from twisted.web.client import HTTPConnectionPool
 from twisted.web.server import NOT_DONE_YET
 
@@ -53,8 +53,23 @@ class TestVas2NetsSmsTransport(VumiTestCase):
         self.patch(transport, 'get_clock', lambda _: self.clock)
         returnValue(transport)
 
+    @inlineCallbacks
     def patch_reactor_call_later(self):
+        yield self.wait_for_test_setup()
         self.patch(reactor, 'callLater', self.clock.callLater)
+
+    def wait_for_test_setup(self):
+        """
+        Wait for test setup to complete.
+
+        Twisted's twisted.trial._asynctest runner calls `reactor.callLater`
+        to set the test timeout *after* running the start of the test. We
+        thus need to wait for this to happen *before* we patch
+        `reactor.callLater`.
+        """
+        d = Deferred()
+        reactor.callLater(0, d.callback, None)
+        return d
 
     def capture_remote_requests(self, response='OK.1234'):
         def handler(req):
@@ -420,13 +435,12 @@ class TestVas2NetsSmsTransport(VumiTestCase):
             to_addr='+123',
             content='hi')
 
-        self.patch_reactor_call_later()
+        yield self.patch_reactor_call_later()
         d = self.tx_helper.dispatch_outbound(msg)
-
-        self.clock.advance(2)
+        self.clock.advance(0)  # trigger initial request
+        self.clock.advance(2)  # wait 2 seconds of timeout
         self.assertEqual(self.tx_helper.get_dispatched_statuses(), [])
-
-        self.clock.advance(2)
+        self.clock.advance(1)  # wait last second of timeout
         yield d
 
         [status] = self.tx_helper.get_dispatched_statuses()
