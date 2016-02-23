@@ -2,7 +2,8 @@ import json
 import treq
 
 from twisted.web import http
-from twisted.internet.defer import inlineCallbacks, returnValue, CancelledError
+from twisted.internet.defer import inlineCallbacks, returnValue
+from twisted.web._newclient import ResponseNeverReceived
 
 from vumi import log
 from vumi.config import ConfigText, ConfigInt
@@ -153,9 +154,7 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
     @inlineCallbacks
     def handle_decode_error(self, message_id, request):
         req = self.get_request_dict(request)
-
         log.error('Bad request encoding: %r' % req)
-
         self.respond(message_id, http.BAD_REQUEST, {'invalid_request': req})
 
         yield self.add_status(
@@ -208,7 +207,7 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
 
         try:
             resp = yield self.send_message(message)
-        except CancelledError:
+        except ResponseNeverReceived:
             yield self.handle_send_timeout(message)
             return
 
