@@ -222,6 +222,11 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
 
     @inlineCallbacks
     def handle_send_timeout(self, message):
+        yield self.publish_nack(
+            user_message_id=message['message_id'],
+            sent_message_id=message['message_id'],
+            reason='Request timeout')
+
         yield self.add_status(
             component='outbound',
             status='down',
@@ -230,7 +235,7 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
 
     @inlineCallbacks
     def handle_outbound_success(self, message, resp):
-        ack = yield self.publish_ack(
+        yield self.publish_ack(
             user_message_id=message['message_id'],
             sent_message_id=message['message_id'])
 
@@ -240,14 +245,12 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
             type='request_success',
             message='Request successful')
 
-        returnValue(ack)
-
     @inlineCallbacks
     def handle_outbound_fail(self, message, resp):
         error = (yield resp.content())
         reason = self.get_send_fail_reason(error)
 
-        nack = yield self.publish_nack(
+        yield self.publish_nack(
             user_message_id=message['message_id'],
             sent_message_id=message['message_id'],
             reason=reason)
@@ -257,8 +260,6 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
             status='down',
             type=self.get_send_fail_type(error),
             message=reason)
-
-        returnValue(nack)
 
 
 def get_in(data, *keys):

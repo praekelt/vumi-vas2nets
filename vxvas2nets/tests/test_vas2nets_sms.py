@@ -443,6 +443,15 @@ class TestVas2NetsSmsTransport(VumiTestCase):
         self.clock.advance(1)  # wait last second of timeout
         yield d
 
+        [nack] = yield self.tx_helper.get_dispatched_events()
+
+        self.assert_contains_items(nack, {
+            'event_type': 'nack',
+            'user_message_id': msg['message_id'],
+            'sent_message_id': msg['message_id'],
+            'nack_reason': 'Request timeout',
+        })
+
         [status] = self.tx_helper.get_dispatched_statuses()
 
         self.assert_contains_items(status, {
