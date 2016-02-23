@@ -106,9 +106,7 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
         }
 
     def get_outbound_url(self, message):
-        id = get_in(message, 'transport_metadata', 'vas2nets_sms', 'msgid')
-
-        if id is not None:
+        if self.use_mo_response_url() and self.is_mo_response(message):
             return self.config['reply_outbound_url']
         else:
             return self.config['outbound_url']
@@ -127,10 +125,13 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
         # from docs:
         # If MO Message ID is validated, MT will not be charged.
         # Only one free MT is allowed for each MO.
-        if id is not None:
+        if id is not None and self.use_mo_response_url():
             params['message_id'] = id
 
         return params
+
+    def use_mo_response_url(self):
+        return self.config.get('reply_outbound_url') is not None
 
     def is_mo_response(self, message):
         return get_in(message, 'transport_metadata', 'vas2nets_sms', 'msgid')
