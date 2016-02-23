@@ -379,7 +379,9 @@ class TestVas2NetsSmsTransport(VumiTestCase):
                 'component': 'outbound',
             })
 
-        self.assertEqual(map_get(nacks, 'nack_reason'), {
+        nack_reasons = map_get(nacks, 'nack_reason')
+
+        self.assertEqual(nack_reasons, {
             'ERR-11': 'Missing username',
             'ERR-12': 'Missing password',
             'ERR-13': 'Missing destination',
@@ -393,23 +395,8 @@ class TestVas2NetsSmsTransport(VumiTestCase):
             'ERR-52': 'System error',
         })
 
-        self.assertEqual(map_get(statuses, 'message'), {
-            'ERR-11': 'Missing username',
-            'ERR-12': 'Missing password',
-            'ERR-13': 'Missing destination',
-            'ERR-14': 'Missing sender id',
-            'ERR-15': 'Missing message',
-            'ERR-21': 'Ender id too long',
-            'ERR-33': 'Invalid login',
-            'ERR-41': 'Insufficient credit',
-            'ERR-70': 'Invalid destination number',
-            'ERR-51': 'Invalid message id',
-            'ERR-52': 'System error',
-        })
-
-        self.assertEqual(
-            map_get(statuses, 'type'),
-            transport.SEND_FAIL_TYPES)
+        self.assertEqual(nack_reasons, map_get(statuses, 'message'))
+        self.assertEqual(map_get(statuses, 'type'), transport.SEND_FAIL_TYPES)
 
     @inlineCallbacks
     def test_outbound_unknown_error(self):
