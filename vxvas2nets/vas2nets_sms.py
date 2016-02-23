@@ -118,6 +118,7 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
             'sender': message['from_addr'],
             'receiver': message['to_addr'],
             'message': message['content'],
+            'message_type': '1',
         }
 
         id = get_in(message, 'transport_metadata', 'vas2nets_sms', 'msgid')
