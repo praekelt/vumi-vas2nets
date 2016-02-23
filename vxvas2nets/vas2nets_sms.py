@@ -1,8 +1,9 @@
+import re
 import json
 import treq
 
 from twisted.web import http
-from twisted.internet.defer import inlineCallbacks, returnValue, CancelledError
+from twisted.internet.defer import inlineCallbacks, CancelledError
 from twisted.internet.error import ConnectingCancelledError
 from twisted.web._newclient import ResponseNeverReceived
 
@@ -34,6 +35,7 @@ class Vas2NetsSmsTransportConfig(HttpRpcTransport.CONFIG_CLASS):
 
 class Vas2NetsSmsTransport(HttpRpcTransport):
     CONFIG_CLASS = Vas2NetsSmsTransportConfig
+    ERROR_RE = re.compile(r'^(?P<code>ERR-\d+) (?P<message>.*)$')
 
     EXPECTED_FIELDS = frozenset([
         'sender',
@@ -60,20 +62,8 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
         'ERR-33': 'invalid_login',
         'ERR-41': 'insufficient_credit',
         'ERR-70': 'invalid_destination_number',
+        'ERR-51': 'invalid_message_id',
         'ERR-52': 'system_error',
-    }
-
-    SEND_FAIL_REASONS = {
-        'ERR-11': 'Missing username (ERR-11)',
-        'ERR-12': 'Missing password (ERR-12)',
-        'ERR-13': 'Missing destination (ERR-13)',
-        'ERR-14': 'Missing sender id (ERR-14)',
-        'ERR-15': 'Missing message (ERR-15)',
-        'ERR-21': 'Ender id too long (ERR-21)',
-        'ERR-33': 'Invalid login (ERR-33)',
-        'ERR-41': 'Insufficient credit (ERR-41)',
-        'ERR-70': 'Invalid destination number (ERR-70)',
-        'ERR-52': 'System error (ERR-52)'
     }
 
     ENCODING = 'utf-8'
@@ -120,12 +110,16 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
 
         return params
 
-    def get_send_fail_reason(self, error):
-        return self.SEND_FAIL_REASONS.get(
-            error, "Unknown request failure: %s" % (error,))
-
     def get_send_fail_type(self, error):
         return self.SEND_FAIL_TYPES.get(error, 'request_fail_unknown')
+
+    def get_outbound_error(self, content):
+        match = self.ERROR_RE.search(content)
+
+        if match is None:
+            return None
+        else:
+            return (match.group('code'), match.group('message'))
 
     def respond(self, message_id, code, body=None):
         if body is None:
@@ -204,7 +198,8 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
             message, self.EXPECTED_MESSAGE_FIELDS)
 
         if missing_fields:
-            returnValue((yield self.reject_message(message, missing_fields)))
+            yield self.reject_message(message, missing_fields)
+            return
 
         try:
             resp = yield self.send_message(message)
@@ -213,12 +208,13 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
             yield self.handle_send_timeout(message)
             return
 
-        # NOTE: we are assuming here that they send us a non-200 response for
-        # error cases (this is not mentioned in the docs)
-        if resp.code == http.OK:
-            returnValue((yield self.handle_outbound_success(message, resp)))
+        content = yield resp.content()
+        error = self.get_outbound_error(content)
+
+        if error is None:
+            yield self.handle_outbound_success(message, resp)
         else:
-            returnValue((yield self.handle_outbound_fail(message, resp)))
+            yield self.handle_outbound_fail(message, resp, *error)
 
     @inlineCallbacks
     def handle_send_timeout(self, message):
@@ -246,10 +242,7 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
             message='Request successful')
 
     @inlineCallbacks
-    def handle_outbound_fail(self, message, resp):
-        error = (yield resp.content())
-        reason = self.get_send_fail_reason(error)
-
+    def handle_outbound_fail(self, message, resp, code, reason):
         yield self.publish_nack(
             user_message_id=message['message_id'],
             sent_message_id=message['message_id'],
@@ -258,7 +251,7 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
         yield self.add_status(
             component='outbound',
             status='down',
-            type=self.get_send_fail_type(error),
+            type=self.get_send_fail_type(code),
             message=reason)
 
 

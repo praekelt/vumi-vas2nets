@@ -341,18 +341,32 @@ class TestVas2NetsSmsTransport(VumiTestCase):
         nacks = {}
         statuses = {}
 
-        for error in transport.SEND_FAIL_TYPES.iterkeys():
+        errors = {
+            'ERR-11': 'ERR-11 Missing username',
+            'ERR-12': 'ERR-12 Missing password',
+            'ERR-13': 'ERR-13 Missing destination',
+            'ERR-14': 'ERR-14 Missing sender id',
+            'ERR-15': 'ERR-15 Missing message',
+            'ERR-21': 'ERR-21 Ender id too long',
+            'ERR-33': 'ERR-33 Invalid login',
+            'ERR-41': 'ERR-41 Insufficient credit',
+            'ERR-70': 'ERR-70 Invalid destination number',
+            'ERR-51': 'ERR-51 Invalid message id',
+            'ERR-52': 'ERR-52 System error',
+        }
+
+        for code, message in errors.items():
             msg = yield self.tx_helper.make_dispatch_outbound(
                 from_addr='456',
                 to_addr='+123',
-                content=error)
+                content=message)
 
             [nack] = yield self.tx_helper.wait_for_dispatched_events(1)
             [status] = self.tx_helper.get_dispatched_statuses()
             self.tx_helper.clear_dispatched_events()
             self.tx_helper.clear_dispatched_statuses()
-            nacks[error] = nack
-            statuses[error] = status
+            nacks[code] = nack
+            statuses[code] = status
 
             self.assert_contains_items(nack, {
                 'event_type': 'nack',
@@ -365,13 +379,33 @@ class TestVas2NetsSmsTransport(VumiTestCase):
                 'component': 'outbound',
             })
 
-        self.assertEqual(
-            map_get(nacks, 'nack_reason'),
-            transport.SEND_FAIL_REASONS)
+        self.assertEqual(map_get(nacks, 'nack_reason'), {
+            'ERR-11': 'Missing username',
+            'ERR-12': 'Missing password',
+            'ERR-13': 'Missing destination',
+            'ERR-14': 'Missing sender id',
+            'ERR-15': 'Missing message',
+            'ERR-21': 'Ender id too long',
+            'ERR-33': 'Invalid login',
+            'ERR-41': 'Insufficient credit',
+            'ERR-70': 'Invalid destination number',
+            'ERR-51': 'Invalid message id',
+            'ERR-52': 'System error',
+        })
 
-        self.assertEqual(
-            map_get(statuses, 'message'),
-            transport.SEND_FAIL_REASONS)
+        self.assertEqual(map_get(statuses, 'message'), {
+            'ERR-11': 'Missing username',
+            'ERR-12': 'Missing password',
+            'ERR-13': 'Missing destination',
+            'ERR-14': 'Missing sender id',
+            'ERR-15': 'Missing message',
+            'ERR-21': 'Ender id too long',
+            'ERR-33': 'Invalid login',
+            'ERR-41': 'Insufficient credit',
+            'ERR-70': 'Invalid destination number',
+            'ERR-51': 'Invalid message id',
+            'ERR-52': 'System error',
+        })
 
         self.assertEqual(
             map_get(statuses, 'type'),
@@ -381,7 +415,7 @@ class TestVas2NetsSmsTransport(VumiTestCase):
     def test_outbound_unknown_error(self):
         def handler(req):
             req.setResponseCode(400)
-            return 'foo'
+            return 'ERR-99 Basao'
 
         yield self.mk_transport()
         self.remote_request_handler = handler
@@ -392,11 +426,12 @@ class TestVas2NetsSmsTransport(VumiTestCase):
             content='hi')
 
         [nack] = yield self.tx_helper.wait_for_dispatched_events(1)
+
         self.assert_contains_items(nack, {
             'event_type': 'nack',
             'user_message_id': msg['message_id'],
             'sent_message_id': msg['message_id'],
-            'nack_reason': 'Unknown request failure: foo',
+            'nack_reason': 'Basao',
         })
 
         [status] = self.tx_helper.get_dispatched_statuses()
@@ -405,7 +440,7 @@ class TestVas2NetsSmsTransport(VumiTestCase):
             'status': 'down',
             'component': 'outbound',
             'type': 'request_fail_unknown',
-            'message': 'Unknown request failure: foo',
+            'message': 'Basao',
         })
 
     @inlineCallbacks
