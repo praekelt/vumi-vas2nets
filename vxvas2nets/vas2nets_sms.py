@@ -23,6 +23,10 @@ class Vas2NetsSmsTransportConfig(HttpRpcTransport.CONFIG_CLASS):
         "null for no timeout",
         default=None)
 
+    reply_outbound_url = ConfigText(
+        "Url to use for reply outbound messages",
+        required=True)
+
     username = ConfigText(
         "Username to use for outbound messages",
         required=True)
@@ -101,6 +105,12 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
             'transport_metadata': {'vas2nets_sms': {'msgid': vals['msgid']}}
         }
 
+    def get_outbound_url(self, message):
+        if self.use_mo_response_url() and self.is_mo_response(message):
+            return self.config['reply_outbound_url']
+        else:
+            return self.config['outbound_url']
+
     def get_outbound_params(self, message):
         params = {
             'username': self.config['username'],
@@ -115,10 +125,35 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
         # from docs:
         # If MO Message ID is validated, MT will not be charged.
         # Only one free MT is allowed for each MO.
-        if id is not None:
+        if id is not None and self.use_mo_response_url():
             params['message_id'] = id
 
         return params
+
+    def use_mo_response_url(self):
+        return self.config.get('reply_outbound_url') is not None
+
+    def is_mo_response(self, message):
+        return get_in(message, 'transport_metadata', 'vas2nets_sms', 'msgid')
+
+    def get_nack_reason(self, error):
+        description = {
+            'ERR-11': 'Missing username',
+            'ERR-12': 'Missing password',
+            'ERR-13': 'Missing destination',
+            'ERR-14': 'Missing sender id',
+            'ERR-15': 'Missing message',
+            'ERR-21': 'Ender id too long',
+            'ERR-33': 'Invalid login',
+            'ERR-41': 'Insufficient credit',
+            'ERR-70': 'Invalid destination number',
+            'ERR-52': 'System error'
+        }.get(error)
+
+        if description is not None:
+            return "%s (%s)" % (description, error)
+        else:
+            return "Unknown: %s" % (error,)
 
     def get_send_fail_reason(self, error):
         return self.SEND_FAIL_REASONS.get(
@@ -135,7 +170,7 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
 
     def send_message(self, message):
         return treq.get(
-            url=self.config['outbound_url'],
+            url=self.get_outbound_url(message),
             params=self.get_outbound_params(message),
             timeout=self.config.get('outbound_request_timeout'))
 
