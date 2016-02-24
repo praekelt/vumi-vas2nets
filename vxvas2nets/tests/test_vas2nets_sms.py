@@ -331,7 +331,7 @@ class TestVas2NetsSmsTransport(VumiTestCase):
     @inlineCallbacks
     def test_outbound_known_error(self):
         def handler(req):
-            req.setResponseCode(400)
+            req.setResponseCode(200)
             [error] = req.args['message']
             return error
 
@@ -401,7 +401,7 @@ class TestVas2NetsSmsTransport(VumiTestCase):
     @inlineCallbacks
     def test_outbound_unknown_error(self):
         def handler(req):
-            req.setResponseCode(400)
+            req.setResponseCode(200)
             return 'ERR-99 Basao'
 
         yield self.mk_transport()
@@ -428,6 +428,38 @@ class TestVas2NetsSmsTransport(VumiTestCase):
             'component': 'outbound',
             'type': 'request_fail_unknown',
             'message': 'Basao',
+        })
+
+    @inlineCallbacks
+    def test_outbound_error_status_code(self):
+        def handler(req):
+            req.setResponseCode(502)
+            return 'Bad Gateway'
+
+        yield self.mk_transport()
+        self.remote_request_handler = handler
+
+        msg = yield self.tx_helper.make_dispatch_outbound(
+            from_addr='456',
+            to_addr='+123',
+            content='hi')
+
+        [nack] = yield self.tx_helper.wait_for_dispatched_events(1)
+
+        self.assert_contains_items(nack, {
+            'event_type': 'nack',
+            'user_message_id': msg['message_id'],
+            'sent_message_id': msg['message_id'],
+            'nack_reason': 'Bad Gateway',
+        })
+
+        [status] = self.tx_helper.get_dispatched_statuses()
+
+        self.assert_contains_items(status, {
+            'status': 'down',
+            'component': 'outbound',
+            'type': 'request_fail_unknown',
+            'message': 'Bad Gateway',
         })
 
     @inlineCallbacks

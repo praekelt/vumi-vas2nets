@@ -91,7 +91,7 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
             'transport_metadata': {'vas2nets_sms': {'msgid': vals['msgid']}}
         }
 
-    def get_outbound_params(self, message):
+    def get_send_params(self, message):
         params = {
             'username': self.config['username'],
             'password': self.config['password'],
@@ -110,16 +110,22 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
 
         return params
 
-    def get_send_fail_type(self, error):
-        return self.SEND_FAIL_TYPES.get(error, 'request_fail_unknown')
+    def get_send_fail_type(self, code):
+        return self.SEND_FAIL_TYPES.get(code, 'request_fail_unknown')
 
-    def get_outbound_error(self, content):
+    def get_send_status(self, content):
         match = self.ERROR_RE.search(content)
 
         if match is None:
-            return None
+            return {
+                'code': None,
+                'message': content
+            }
         else:
-            return (match.group('code'), match.group('message'))
+            return {
+                'code': match.group('code'),
+                'message': match.group('message'),
+            }
 
     def respond(self, message_id, code, body=None):
         if body is None:
@@ -130,7 +136,7 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
     def send_message(self, message):
         return treq.get(
             url=self.config['outbound_url'],
-            params=self.get_outbound_params(message),
+            params=self.get_send_params(message),
             timeout=self.config.get('outbound_request_timeout'))
 
     @inlineCallbacks
@@ -209,12 +215,12 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
             return
 
         content = yield resp.content()
-        error = self.get_outbound_error(content)
+        status = self.get_send_status(content)
 
-        if error is None:
-            yield self.handle_outbound_success(message, resp)
+        if resp.code == http.OK and status['code'] is None:
+            yield self.handle_outbound_success(message)
         else:
-            yield self.handle_outbound_fail(message, resp, *error)
+            yield self.handle_outbound_fail(message, status)
 
     @inlineCallbacks
     def handle_send_timeout(self, message):
@@ -230,7 +236,7 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
             message='Request timeout')
 
     @inlineCallbacks
-    def handle_outbound_success(self, message, resp):
+    def handle_outbound_success(self, message):
         yield self.publish_ack(
             user_message_id=message['message_id'],
             sent_message_id=message['message_id'])
@@ -242,17 +248,17 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
             message='Request successful')
 
     @inlineCallbacks
-    def handle_outbound_fail(self, message, resp, code, reason):
+    def handle_outbound_fail(self, message, status):
         yield self.publish_nack(
             user_message_id=message['message_id'],
             sent_message_id=message['message_id'],
-            reason=reason)
+            reason=status['message'])
 
         yield self.add_status(
             component='outbound',
             status='down',
-            type=self.get_send_fail_type(code),
-            message=reason)
+            type=self.get_send_fail_type(status['code']),
+            message=status['message'])
 
 
 def get_in(data, *keys):
