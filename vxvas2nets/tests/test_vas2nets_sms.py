@@ -2,6 +2,7 @@
 
 import json
 from urllib import urlencode
+from urlparse import urljoin
 
 from twisted.web import http
 from twisted.internet import reactor
@@ -43,7 +44,7 @@ class TestVas2NetsSmsTransport(VumiTestCase):
             'web_port': 0,
             'web_path': '/api/v1/vas2nets/sms/',
             'publish_status': True,
-            'outbound_url': self.remote_server.url,
+            'outbound_url': urljoin(self.remote_server.url, 'nonreply'),
             'username': 'root',
             'password': 't00r',
         }
@@ -248,7 +249,10 @@ class TestVas2NetsSmsTransport(VumiTestCase):
 
     @inlineCallbacks
     def test_outbound_non_reply(self):
-        yield self.mk_transport()
+        yield self.mk_transport(
+            outbound_url=urljoin(self.remote_server.url, 'nonreply'),
+            reply_outbound_url=urljoin(self.remote_server.url, 'reply'))
+
         reqs = self.capture_remote_requests()
 
         msg = yield self.tx_helper.make_dispatch_outbound(
@@ -257,6 +261,8 @@ class TestVas2NetsSmsTransport(VumiTestCase):
             content='hi')
 
         [req] = reqs
+
+        self.assertTrue(req.uri.startswith('/nonreply'))
         self.assertEqual(req.method, 'GET')
         self.assertEqual(req.args, {
             'username': ['root'],
@@ -284,7 +290,10 @@ class TestVas2NetsSmsTransport(VumiTestCase):
 
     @inlineCallbacks
     def test_outbound_reply(self):
-        yield self.mk_transport()
+        yield self.mk_transport(
+            outbound_url=urljoin(self.remote_server.url, 'nonreply'),
+            reply_outbound_url=urljoin(self.remote_server.url, 'reply'))
+
         reqs = self.capture_remote_requests()
 
         yield self.tx_helper.mk_request(
@@ -302,6 +311,7 @@ class TestVas2NetsSmsTransport(VumiTestCase):
         yield self.tx_helper.dispatch_outbound(msg)
 
         [req] = reqs
+        self.assertTrue(req.uri.startswith('/reply'))
         self.assertEqual(req.method, 'GET')
         self.assertEqual(req.args, {
             'username': ['root'],
@@ -310,6 +320,55 @@ class TestVas2NetsSmsTransport(VumiTestCase):
             'sender': ['456'],
             'receiver': ['+123'],
             'message_id': ['789']
+        })
+
+        [ack] = yield self.tx_helper.wait_for_dispatched_events(1)
+
+        self.assert_contains_items(ack, {
+            'user_message_id': msg['message_id'],
+            'sent_message_id': msg['message_id'],
+        })
+
+        [status] = self.tx_helper.get_dispatched_statuses()
+
+        self.assert_contains_items(status, {
+            'status': 'ok',
+            'component': 'outbound',
+            'type': 'request_success',
+            'message': 'Request successful',
+        })
+
+    @inlineCallbacks
+    def test_outbound_reply_nourl(self):
+        yield self.mk_transport(
+            outbound_url=urljoin(self.remote_server.url, 'nonreply'),
+            reply_outbound_url=None)
+
+        reqs = self.capture_remote_requests()
+
+        yield self.tx_helper.mk_request(
+            sender='+123',
+            receiver='456',
+            msgdata='hi',
+            operator='MTN',
+            recvtime='2012-02-27 19-50-07',
+            msgid='789')
+
+        [in_msg] = yield self.tx_helper.wait_for_dispatched_inbound(1)
+
+        msg = in_msg.reply('hi back')
+        self.tx_helper.clear_dispatched_statuses()
+        yield self.tx_helper.dispatch_outbound(msg)
+
+        [req] = reqs
+        self.assertTrue(req.uri.startswith('/nonreply'))
+        self.assertEqual(req.method, 'GET')
+        self.assertEqual(req.args, {
+            'username': ['root'],
+            'message': ['hi back'],
+            'password': ['t00r'],
+            'sender': ['456'],
+            'receiver': ['+123'],
         })
 
         [ack] = yield self.tx_helper.wait_for_dispatched_events(1)
