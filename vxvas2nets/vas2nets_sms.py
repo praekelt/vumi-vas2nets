@@ -108,6 +108,14 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
             'sender': message['from_addr'],
             'receiver': message['to_addr'],
             'message': message['content'],
+
+            # From docs:
+            # flag indicating normal text message
+            # 0 or 1  Note: 1=flash, 0=text (This is optional, the default is 0
+            # i.e text)
+            # From testing, it appears they are expecting this value to always
+            # be 1
+            'message_type': '1',
         }
 
         id = get_in(message, 'transport_metadata', 'vas2nets_sms', 'msgid')

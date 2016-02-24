@@ -270,6 +270,7 @@ class TestVas2NetsSmsTransport(VumiTestCase):
             'password': ['t00r'],
             'sender': ['456'],
             'receiver': ['+123'],
+            'message_type': ['1'],
         })
 
         [ack] = yield self.tx_helper.wait_for_dispatched_events(1)
@@ -319,7 +320,8 @@ class TestVas2NetsSmsTransport(VumiTestCase):
             'password': ['t00r'],
             'sender': ['456'],
             'receiver': ['+123'],
-            'message_id': ['789']
+            'message_id': ['789'],
+            'message_type': ['1'],
         })
 
         [ack] = yield self.tx_helper.wait_for_dispatched_events(1)
@@ -369,6 +371,7 @@ class TestVas2NetsSmsTransport(VumiTestCase):
             'password': ['t00r'],
             'sender': ['456'],
             'receiver': ['+123'],
+            'message_type': ['1'],
         })
 
         [ack] = yield self.tx_helper.wait_for_dispatched_events(1)
