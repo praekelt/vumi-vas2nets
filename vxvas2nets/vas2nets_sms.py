@@ -262,14 +262,21 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
 
         content = yield resp.content()
         status = self.get_send_status(content)
+        self.emit('Vas2Nets response for %s: %s, status: %s' % (
+            message['message_id'], content, status))
 
         if resp.code == http.OK and status['code'] is None:
             yield self.handle_outbound_success(message)
         else:
             yield self.handle_outbound_fail(message, status)
 
+    def emit(self, log):
+        if self.get_static_config().noisy:
+            self.log.info(log)
+
     @inlineCallbacks
     def handle_send_timeout(self, message):
+        self.emit('Timing out: %s' % (message,))
         yield self.publish_nack(
             user_message_id=message['message_id'],
             sent_message_id=message['message_id'],
@@ -283,6 +290,7 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
 
     @inlineCallbacks
     def handle_outbound_success(self, message):
+        self.emit('Outbound success: %s' % (message,))
         yield self.publish_ack(
             user_message_id=message['message_id'],
             sent_message_id=message['message_id'])
@@ -295,6 +303,7 @@ class Vas2NetsSmsTransport(HttpRpcTransport):
 
     @inlineCallbacks
     def handle_outbound_fail(self, message, status):
+        self.emit('Outbound fail: %s' % (message,))
         yield self.publish_nack(
             user_message_id=message['message_id'],
             sent_message_id=message['message_id'],
